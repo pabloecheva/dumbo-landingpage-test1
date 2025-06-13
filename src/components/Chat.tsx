@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Send, LogOut, ChevronRight, Plus, FileUp, Settings, MessageSquare, Files, X, ChevronLeft, MoreVertical, Edit2, Trash2, Folder, FileText, ChevronUp, ChevronDown, Key } from 'lucide-react';
+import { Send, LogOut, ChevronRight, Plus, FileUp, Settings, MessageSquare, Files, X, ChevronLeft, MoreVertical, Edit2, Trash2, Folder, FileText, ChevronUp, ChevronDown, Key, Menu } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import Sidebar from './Sidebar';
 import FileUploadModal from './FileUploadModal';
 import ThemeDropdown from './ThemeDropdown';
 import CopyButton from './CopyButton';
@@ -247,7 +248,8 @@ const Chat: React.FC = () => {
   const [editingContextId, setEditingContextId] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
-  const [showLeftDrawer, setShowLeftDrawer] = useState(false);
+  const [showLeftDrawer, setShowLeftDrawer] = useState(true);
+  const [showContextSidebar, setShowContextSidebar] = useState(true);
   const [showRightDrawer, setShowRightDrawer] = useState(false);
   const [activeTab, setActiveTab] = useState<'chat' | 'files'>('chat');
   const [showProfileModal, setShowProfileModal] = useState(false);
@@ -282,6 +284,28 @@ const Chat: React.FC = () => {
     contextId: '',
     contextName: ''
   });
+
+  // Load sidebar preferences from localStorage
+  useEffect(() => {
+    const savedMainSidebar = localStorage.getItem('showLeftDrawer');
+    const savedContextSidebar = localStorage.getItem('showContextSidebar');
+    
+    if (savedMainSidebar !== null) {
+      setShowLeftDrawer(JSON.parse(savedMainSidebar));
+    }
+    if (savedContextSidebar !== null) {
+      setShowContextSidebar(JSON.parse(savedContextSidebar));
+    }
+  }, []);
+
+  // Save sidebar preferences to localStorage
+  useEffect(() => {
+    localStorage.setItem('showLeftDrawer', JSON.stringify(showLeftDrawer));
+  }, [showLeftDrawer]);
+
+  useEffect(() => {
+    localStorage.setItem('showContextSidebar', JSON.stringify(showContextSidebar));
+  }, [showContextSidebar]);
 
   const handleDeleteFile = async (fileId: string, fileName: string, filePath: string | null) => {
     setDeleteConfirmation({
@@ -453,19 +477,38 @@ const Chat: React.FC = () => {
   }, []);
 
   const handleCreateContext = async (name: string) => {
+    const trimmedName = name.trim();
+    
+    // Check if name is empty
+    if (!trimmedName) {
+      alert('Context name cannot be empty.');
+      return;
+    }
+    
+    // Check if name already exists (case-insensitive)
+    const existingContext = contexts.find(c => 
+      c.name.toLowerCase().trim() === trimmedName.toLowerCase()
+    );
+    
+    if (existingContext) {
+      alert('A context with this name already exists. Please choose a different name.');
+      return;
+    }
+    
     try {
       const { data, error } = await supabase
         .from('contexts')
-        .insert([{ name }])
+        .insert([{ name: trimmedName }])
         .select()
         .single();
 
       if (error) throw error;
 
-      setContexts(prev => [...prev, { id: data.id, name: data.name, files: [] }]);
+      setContexts(prev => [...prev, { id: data.id, name: trimmedName, files: [] }]);
       setShowCreateModal(false);
     } catch (error) {
       console.error('Error creating context:', error);
+      alert('Failed to create context. Please try again.');
     }
   };
 
@@ -572,176 +615,237 @@ const Chat: React.FC = () => {
   };
 
   // Function to truncate context name
-  const truncateContextName = (name: string, maxLength: number = 20) => {
-    if (name.length <= maxLength) return name;
-    return name.substring(0, maxLength) + '...';
-  };
 
   return (
     <div className="flex h-screen bg-white dark:bg-gray-900 relative">
-      {/* Sidebar */}
-      <div className={`w-64 bg-white dark:bg-gray-800 border-r border-[#E5E5E5] dark:border-gray-600 flex flex-col transform transition-transform duration-300 ${
-        showLeftDrawer ? 'translate-x-0' : '-translate-x-full'
-      } fixed md:static z-20 h-full md:translate-x-0`}>
+      {/* Main Sidebar */}
+      <Sidebar
+        isExpanded={selectedContext ? showContextSidebar : showLeftDrawer}
+        onToggle={() => {
+          if (selectedContext) {
+            setShowContextSidebar(!showContextSidebar);
+          } else {
+            setShowLeftDrawer(!showLeftDrawer);
+          }
+        }}
+        title={selectedContext ? selectedContext.name : "MY CONTEXTS"}
+      >
         {selectedContext ? (
           <>
-            <div className="flex items-center px-4 py-3 text-[#6E6B65] dark:text-gray-400 text-sm font-medium border-b border-[#E5E5E5] dark:border-gray-600">
-              <button 
-                onClick={() => setSelectedContext(null)}
-                className="flex items-center gap-2 hover:text-[#23201A] dark:hover:text-gray-200 transition-colors"
-              >
-                <ChevronLeft size={16} />
-                <span>Back</span>
-                <span className="text-[#23201A] dark:text-gray-200">• {selectedContext.name}</span>
-              </button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-4">
-              <h3 className="text-sm font-medium text-[#6E6B65] dark:text-gray-400 mb-3">Files</h3>
-              {selectedContext.files?.map((file, index) => (
-                <div
-                  key={file.id}
-                  className="flex items-center justify-between py-2 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-md transition-colors group"
-                >
-                  <div className="flex items-center gap-3">
-                    {getFileIcon(file.name)}
-                    <span className="text-[#23201A] dark:text-gray-200 text-sm">{file.name}</span>
-                  </div>
-                  <button 
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDeleteFile(file.id, file.name, file.path);
-                    }}
-                    className="opacity-0 group-hover:opacity-100 text-red-500 hover:bg-red-50 p-1 rounded-full transition-all"
+            <Sidebar.Header
+              title={selectedContext.name}
+              isExpanded={showContextSidebar}
+              onToggle={() => setShowContextSidebar(!showContextSidebar)}
+              onBack={() => {
+                setSelectedContext(null);
+                setShowContextSidebar(showLeftDrawer);
+              }}
+              backLabel={`Back • ${selectedContext.name}`}
+            />
+            <Sidebar.Content isExpanded={showContextSidebar}>
+              <div className="p-4">
+                <h3 className="text-sm font-medium text-[#6E6B65] dark:text-gray-400 mb-3">Files</h3>
+                {selectedContext.files?.map((file, index) => (
+                  <div
+                    key={file.id}
+                    className="flex items-center justify-between py-2 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-md transition-colors group"
                   >
-                    <Trash2 size={16} />
-                  </button>
-                </div>
-              ))}
-            </div>
-            <div className="border-t border-[#E5E5E5] dark:border-gray-600 p-4">
-              <button 
-                onClick={() => setShowUploadModal(true)}
-                className="w-full flex items-center justify-center gap-2 py-2 text-[#A3C9C7] hover:bg-[#A3C9C7] hover:bg-opacity-20 dark:hover:bg-gray-700 rounded-md transition-colors"
-              >
-                <Plus size={16} />
-                <span>Add Data to Context</span>
-              </button>
-            </div>
+                    <div className="flex items-center gap-3">
+                      {getFileIcon(file.name)}
+                      <span className="text-[#23201A] dark:text-gray-200 text-sm">{file.name}</span>
+                    </div>
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteFile(file.id, file.name, file.path);
+                      }}
+                      className="opacity-0 group-hover:opacity-100 text-red-500 hover:bg-red-50 p-1 rounded-full transition-all"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </Sidebar.Content>
+            <Sidebar.Footer isExpanded={showContextSidebar}>
+              <div className="p-4">
+                <button 
+                  onClick={() => setShowUploadModal(true)}
+                  className="w-full flex items-center justify-center gap-2 py-2 text-[#A3C9C7] hover:bg-[#A3C9C7] hover:bg-opacity-20 dark:hover:bg-gray-700 rounded-md transition-colors"
+                >
+                  <Plus size={16} />
+                  <span>Add Data to Context</span>
+                </button>
+              </div>
+            </Sidebar.Footer>
           </>
         ) : (
           <>
-            <h2 className="px-4 py-3 text-sm font-medium text-[#6E6B65] dark:text-gray-400 border-b border-[#E5E5E5] dark:border-gray-600">
-              MY CONTEXTS
-            </h2>
-            <div className="flex-1 overflow-y-auto">
-              {contexts.map((context) => (
-                <button
-                  key={context.id}
-                  className="w-full"
-                  onClick={(e) => {
-                    if (editingContextId !== context.id) {
-                      handleContextSelect(context);
-                    }
-                  }}
-                >
-                  <div 
-                    className="flex items-center justify-between px-4 py-2 text-left hover:bg-[#A3C9C7] hover:bg-opacity-20 dark:hover:bg-gray-700 transition-colors group"
-                    onContextMenu={(e) => handleContextClick(e, context)}
+            <Sidebar.Header
+              title="MY CONTEXTS"
+              isExpanded={showLeftDrawer}
+              onToggle={() => setShowLeftDrawer(!showLeftDrawer)}
+            />
+            <Sidebar.Content isExpanded={showLeftDrawer}>
+              <div>
+                {contexts.map((context) => (
+                  <button
+                    key={context.id}
+                    className="w-full"
+                    onClick={(e) => {
+                      if (editingContextId !== context.id) {
+                        handleContextSelect(context);
+                      }
+                    }}
                   >
-                    <div className="flex flex-col min-w-0 flex-1 pr-2">
-                      {editingContextId === context.id ? (
-                        <input
-                          autoFocus
-                          type="text"
-                          value={context.name}
-                          onClick={(e) => e.stopPropagation()}
-                          onMouseDown={(e) => e.stopPropagation()}
-                          onChange={(e) => {
-                            const newName = e.target.value;
-                            setContexts(prev =>
-                              prev.map(c =>
-                                c.id === context.id ? { ...c, name: newName } : c
-                              )
-                            );
-                          }}
-                          onBlur={async () => {
-                            try {
-                              const { error } = await supabase
-                                .from('contexts')
-                                .update({ name: context.name })
-                                .eq('id', context.id);
-
-                              if (error) throw error;
-                            } catch (error) {
-                              console.error('Error updating context:', error);
-                            }
-                            setEditingContextId(null);
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              e.currentTarget.blur();
-                            }
-                          }}
-                          className="bg-transparent border-none focus:outline-none text-[#23201A] dark:text-gray-200 w-full"
-                        />
-                      ) : (
-                        <span 
-                          className="text-[#23201A] dark:text-gray-200 truncate block"
-                          title={context.name}
-                        >
-                          {truncateContextName(context.name)}
-                        </span>
-                      )}
-                      <span className="text-xs text-[#6E6B65] dark:text-gray-400">{context.files?.length} files</span>
-                    </div>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleContextClick(e, context);
-                      }}
-                      className="p-1 hover:bg-[#A3C9C7] hover:bg-opacity-20 dark:hover:bg-gray-600 rounded-full transition-colors flex-shrink-0 opacity-0 group-hover:opacity-100"
+                    <div 
+                      className="flex items-center justify-between px-4 py-3 text-left hover:bg-[#A3C9C7] hover:bg-opacity-20 dark:hover:bg-gray-700 transition-colors group"
+                      onContextMenu={(e) => handleContextClick(e, context)}
                     >
-                      <MoreVertical size={16} className="text-[#6E6B65] dark:text-gray-400" />
-                    </button>
-                  </div>
+                      <div className="flex flex-col min-w-0 flex-1 pr-3">
+                        {editingContextId === context.id ? (
+                          <input
+                            autoFocus
+                            type="text"
+                            value={context.name}
+                            onClick={(e) => e.stopPropagation()}
+                            onMouseDown={(e) => e.stopPropagation()}
+                            onChange={(e) => {
+                              const newName = e.target.value;
+                              setContexts(prev =>
+                                prev.map(c =>
+                                  c.id === context.id ? { ...c, name: newName } : c
+                                )
+                              );
+                            }}
+                            onBlur={async () => {
+                              const trimmedName = context.name.trim();
+                              
+                              // Check if name is empty
+                              if (!trimmedName) {
+                                // Revert to original name if empty
+                                const { data: originalContext, error: fetchError } = await supabase
+                                  .from('contexts')
+                                  .select('name')
+                                  .eq('id', context.id)
+                                  .single();
+                                
+                                if (!fetchError && originalContext) {
+                                  setContexts(prev =>
+                                    prev.map(c =>
+                                      c.id === context.id ? { ...c, name: originalContext.name } : c
+                                    )
+                                  );
+                                }
+                                setEditingContextId(null);
+                                alert('Context name cannot be empty.');
+                                return;
+                              }
+                              
+                              // Check if name already exists (case-insensitive)
+                              const existingContext = contexts.find(c => 
+                                c.id !== context.id && 
+                                c.name.toLowerCase().trim() === trimmedName.toLowerCase()
+                              );
+                              
+                              if (existingContext) {
+                                // Revert to original name if duplicate
+                                const { data: originalContext, error: fetchError } = await supabase
+                                  .from('contexts')
+                                  .select('name')
+                                  .eq('id', context.id)
+                                  .single();
+                                
+                                if (!fetchError && originalContext) {
+                                  setContexts(prev =>
+                                    prev.map(c =>
+                                      c.id === context.id ? { ...c, name: originalContext.name } : c
+                                    )
+                                  );
+                                }
+                                setEditingContextId(null);
+                                alert('A context with this name already exists. Please choose a different name.');
+                                return;
+                              }
+                              
+                              try {
+                                const { error } = await supabase
+                                  .from('contexts')
+                                  .update({ name: trimmedName })
+                                  .eq('id', context.id);
+
+                                if (error) throw error;
+                                
+                                // Update local state with trimmed name
+                                setContexts(prev =>
+                                  prev.map(c =>
+                                    c.id === context.id ? { ...c, name: trimmedName } : c
+                                  )
+                                );
+                              } catch (error) {
+                                console.error('Error updating context:', error);
+                                alert('Failed to update context name. Please try again.');
+                              }
+                              setEditingContextId(null);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.currentTarget.blur();
+                              }
+                            }}
+                            className="bg-transparent border-none focus:outline-none text-[#23201A] dark:text-gray-200 w-full text-sm font-medium"
+                          />
+                        ) : (
+                          <span 
+                            className="text-[#23201A] dark:text-gray-200 truncate block text-sm font-medium leading-tight"
+                            title={context.name}
+                          >
+                            {context.name}
+                          </span>
+                        )}
+                        <span className="text-xs text-[#6E6B65] dark:text-gray-400 mt-0.5">{context.files?.length || 0} files</span>
+                      </div>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleContextClick(e, context);
+                        }}
+                        className="p-1.5 hover:bg-[#A3C9C7] hover:bg-opacity-20 dark:hover:bg-gray-600 rounded-full transition-colors flex-shrink-0 opacity-0 group-hover:opacity-100"
+                      >
+                        <MoreVertical size={16} className="text-[#6E6B65] dark:text-gray-400" />
+                      </button>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </Sidebar.Content>
+            <Sidebar.Footer isExpanded={showLeftDrawer}>
+              <div>
+                <button
+                  onClick={() => setShowCreateModal(true)}
+                  className="w-full flex items-center gap-2 px-4 py-3 text-[#A3C9C7] hover:bg-[#A3C9C7] hover:bg-opacity-20 dark:hover:bg-gray-700 transition-colors border-b border-[#E5E5E5] dark:border-gray-600"
+                >
+                  <Plus size={16} />
+                  <span>New Context</span>
                 </button>
-              ))}
-            </div>
+              
+              <button
+                onClick={handleLogout}
+                className="w-full flex items-center gap-2 px-4 py-3 text-[#6E6B65] dark:text-gray-400 hover:bg-[#A3C9C7] hover:bg-opacity-20 dark:hover:bg-gray-700 transition-colors"
+              >
+                <LogOut size={16} />
+                <span>Logout</span>
+              </button>
+              </div>
+            </Sidebar.Footer>
           </>
         )}
-
-        <div className="border-t border-[#E5E5E5] dark:border-gray-600">
-          {!selectedContext && (
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="w-full flex items-center gap-2 px-4 py-3 text-[#A3C9C7] hover:bg-[#A3C9C7] hover:bg-opacity-20 dark:hover:bg-gray-700 transition-colors"
-            >
-              <Plus size={16} />
-              <span>New Context</span>
-            </button>
-          )}
-          <button
-            onClick={handleLogout}
-            className="w-full flex items-center gap-2 px-4 py-3 text-[#6E6B65] dark:text-gray-400 hover:bg-[#A3C9C7] hover:bg-opacity-20 dark:hover:bg-gray-700 transition-colors border-t border-[#E5E5E5] dark:border-gray-600"
-          >
-            <LogOut size={16} />
-            <span>Logout</span>
-          </button>
-        </div>
-      </div>
+      </Sidebar>
 
       {/* Header with Logout */}
       <div className="flex-1 flex flex-col">
-        <div className="border-b border-[#E5E5E5] dark:border-gray-600 p-4 flex items-center justify-between bg-white dark:bg-gray-800">
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setShowLeftDrawer(!showLeftDrawer)}
-              className="p-2 hover:bg-[#A3C9C7] hover:bg-opacity-20 dark:hover:bg-gray-700 rounded-md transition-colors md:hidden"
-            >
-              {showLeftDrawer ? <ChevronLeft size={20} /> : <ChevronRight size={20} />}
-            </button>
-            <h1 className="text-[#23201A] dark:text-gray-200 text-xl font-medium">{selectedContext?.name || 'My Contexts'}</h1>
-          </div>
+        <div className="border-b border-[#E0E0E0] dark:border-gray-600 px-4 py-3 flex items-center justify-between bg-white dark:bg-gray-800">
+          <h1 className="text-[#23201A] dark:text-gray-200 text-xl font-medium">{selectedContext?.name || 'My Contexts'}</h1>
           <div className="flex items-center gap-2">
             <ThemeDropdown />
             <CopyButton lastAiResponse={lastAiResponse} />
@@ -755,7 +859,7 @@ const Chat: React.FC = () => {
         </div>
 
         {/* Messages Area */}
-        <div className={`flex-1 overflow-y-auto p-2 sm:p-4 space-y-6 bg-[#F6F5EE] dark:bg-gray-900 ${!selectedContext ? 'opacity-50' : ''}`}>
+        <div className={`flex-1 overflow-y-auto p-4 space-y-6 bg-[#F6F5EE] dark:bg-gray-900 ${!selectedContext ? 'opacity-50' : ''}`}>
           {!selectedContext ? (
             <div className="flex items-center justify-center h-full flex-col gap-3 px-4 text-center">
               <h1 className="text-xl sm:text-2xl text-[#23201A] dark:text-gray-200">Please select a Context</h1>
@@ -817,7 +921,7 @@ const Chat: React.FC = () => {
         </div>
 
         {/* Input Area */}
-        <div className="border-t border-[#E5E5E5] dark:border-gray-600 p-2 sm:p-4 bg-white dark:bg-gray-800">
+        <div className="border-t border-[#E0E0E0] dark:border-gray-600 px-4 py-3 bg-white dark:bg-gray-800">
           <form onSubmit={handleSubmit} className="max-w-3xl mx-auto">
             <div className="relative">
               {selectedFile && (
@@ -839,7 +943,7 @@ const Chat: React.FC = () => {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 placeholder="Message your AI assistant..."
-                className="w-full p-3 sm:p-4 pr-24 rounded-lg bg-white dark:bg-gray-700 border border-[#E5E5E5] dark:border-gray-600 text-[#23201A] dark:text-gray-200 text-sm sm:text-base placeholder-[#6E6B65] dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#A3C9C7] focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full p-4 pr-24 rounded-lg bg-white dark:bg-gray-700 border border-[#E0E0E0] dark:border-gray-600 text-[#23201A] dark:text-gray-200 placeholder-[#6E6B65] dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#A3C9C7] focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
               />
               <button
                 type="button"
@@ -862,10 +966,10 @@ const Chat: React.FC = () => {
       </div>
 
       {/* Right Drawer */}
-      <div className={`w-full sm:w-80 bg-white dark:bg-gray-800 border-l border-[#E5E5E5] dark:border-gray-600 flex flex-col transform transition-transform duration-300 ${
+      <div className={`w-full sm:w-80 bg-white dark:bg-gray-800 border-l border-[#E0E0E0] dark:border-gray-600 flex flex-col transform transition-transform duration-300 ${
         showRightDrawer ? 'translate-x-0' : 'translate-x-full'
       } fixed right-0 top-0 bottom-0 z-30`}>
-        <div className="flex items-center justify-between p-4 border-b border-[#E5E5E5] dark:border-gray-600">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-[#E0E0E0] dark:border-gray-600">
           <h2 className="text-[#23201A] dark:text-gray-200 font-medium">Settings</h2>
           <button
             onClick={() => setShowRightDrawer(false)}
@@ -879,7 +983,7 @@ const Chat: React.FC = () => {
             {/* My Profile Button */}
             <button
               onClick={() => setShowProfileModal(true)}
-              className="w-full flex items-center gap-3 p-4 bg-white dark:bg-gray-700 hover:bg-[#F6F5EE] dark:hover:bg-gray-600 rounded-lg border border-[#E5E5E5] dark:border-gray-600 transition-colors text-left"
+              className="w-full flex items-center gap-3 p-4 bg-white dark:bg-gray-700 hover:bg-[#F6F5EE] dark:hover:bg-gray-600 rounded-lg border border-[#E0E0E0] dark:border-gray-600 transition-colors text-left"
             >
               <div className="w-10 h-10 bg-[#A3C9C7] rounded-full flex items-center justify-center">
                 <Settings size={20} className="text-white" />
@@ -891,7 +995,7 @@ const Chat: React.FC = () => {
             </button>
 
             {/* API Key Management */}
-            <div className="bg-white dark:bg-gray-700 rounded-lg border border-[#E5E5E5] dark:border-gray-600 p-4">
+            <div className="bg-white dark:bg-gray-700 rounded-lg border border-[#E0E0E0] dark:border-gray-600 p-4">
               <div className="flex items-center gap-3 mb-3">
                 <div className="w-10 h-10 bg-yellow-100 dark:bg-yellow-900 rounded-full flex items-center justify-center">
                   <Key size={20} className="text-yellow-600 dark:text-yellow-400" />
@@ -910,7 +1014,7 @@ const Chat: React.FC = () => {
             </div>
 
             {/* Temperature Settings */}
-            <div className="bg-white dark:bg-gray-700 rounded-lg border border-[#E5E5E5] dark:border-gray-600 p-4">
+            <div className="bg-white dark:bg-gray-700 rounded-lg border border-[#E0E0E0] dark:border-gray-600 p-4">
               <div className="flex items-center gap-3 mb-3">
                 <div className="w-10 h-10 bg-[#A3C9C7] bg-opacity-20 rounded-full flex items-center justify-center">
                   <Settings size={20} className="text-[#A3C9C7]" />
