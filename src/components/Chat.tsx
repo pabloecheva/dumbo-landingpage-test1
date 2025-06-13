@@ -1,7 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Send, LogOut, ChevronRight, Plus, FileUp, Settings, MessageSquare, Files, X, ChevronLeft, MoreVertical, Edit2, Trash2, Folder, FileText, ChevronUp, ChevronDown } from 'lucide-react';
+import { Send, LogOut, ChevronRight, Plus, FileUp, Settings, MessageSquare, Files, X, ChevronLeft, MoreVertical, Edit2, Trash2, Folder, FileText, ChevronUp, ChevronDown, Key } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import FileUploadModal from './FileUploadModal';
+import ThemeDropdown from './ThemeDropdown';
+import CopyButton from './CopyButton';
+import ProfileModal from './ProfileModal';
+import ApiKeyModal from './ApiKeyModal';
 
 interface Context {
   id: string;
@@ -33,6 +37,20 @@ interface CreateContextModalProps {
   onSubmit: (name: string) => void;
 }
 
+interface DeleteConfirmationModalProps {
+  isOpen: boolean;
+  fileName: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+
+interface DeleteContextModalProps {
+  isOpen: boolean;
+  contextName: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+
 interface Message {
   role: 'user' | 'assistant';
   content: string;
@@ -46,6 +64,88 @@ interface Message {
 interface FileInputRef {
   click: () => void;
 }
+
+const DeleteConfirmationModal: React.FC<DeleteConfirmationModalProps> = ({ isOpen, fileName, onConfirm, onCancel }) => {
+  if (!isOpen) return null;
+  
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center animate-in fade-in-0 duration-200">
+      <div className="absolute inset-0 bg-black bg-opacity-50" onClick={onCancel} />
+      <div className="relative bg-white dark:bg-gray-800 rounded-lg w-full max-w-md p-6 m-4 shadow-xl animate-in zoom-in-95 duration-200">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-10 h-10 rounded-full bg-red-100 dark:bg-red-900 flex items-center justify-center">
+            <Trash2 className="w-5 h-5 text-red-600 dark:text-red-400" />
+          </div>
+          <h2 className="text-xl font-semibold text-[#23201A] dark:text-gray-200">Delete File</h2>
+        </div>
+        
+        <div className="mb-6">
+          <p className="text-[#6E6B65] dark:text-gray-400">
+            Are you sure you want to delete <span className="font-medium text-[#23201A] dark:text-gray-200">{fileName}</span>? This action cannot be undone.
+          </p>
+        </div>
+        
+        <div className="flex gap-3">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="flex-1 px-4 py-2 border border-[#E5E5E5] dark:border-gray-600 rounded-md hover:bg-[#F7D6B7] hover:border-[#F7D6B7] dark:hover:bg-gray-700 transition-colors text-[#23201A] dark:text-gray-200"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className="flex-1 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const DeleteContextModal: React.FC<DeleteContextModalProps> = ({ isOpen, contextName, onConfirm, onCancel }) => {
+  if (!isOpen) return null;
+  
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center animate-in fade-in-0 duration-200">
+      <div className="absolute inset-0 bg-black bg-opacity-50" onClick={onCancel} />
+      <div className="relative bg-white dark:bg-gray-800 rounded-lg w-full max-w-md p-6 m-4 shadow-xl animate-in zoom-in-95 duration-200">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-10 h-10 rounded-full bg-red-100 dark:bg-red-900 flex items-center justify-center">
+            <Trash2 className="w-5 h-5 text-red-600 dark:text-red-400" />
+          </div>
+          <h2 className="text-xl font-semibold text-[#23201A] dark:text-gray-200">Delete Context</h2>
+        </div>
+        
+        <div className="mb-6">
+          <p className="text-[#6E6B65] dark:text-gray-400">
+            Are you sure you want to delete <span className="font-medium text-[#23201A] dark:text-gray-200">"{contextName}"</span>? This will permanently remove the context and all its files. This action cannot be undone.
+          </p>
+        </div>
+        
+        <div className="flex gap-3">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="flex-1 px-4 py-2 border border-[#E5E5E5] dark:border-gray-600 rounded-md hover:bg-[#F7D6B7] hover:border-[#F7D6B7] dark:hover:bg-gray-700 transition-colors text-[#23201A] dark:text-gray-200"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className="flex-1 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const CreateContextModal: React.FC<CreateContextModalProps> = ({ isOpen, onClose, onSubmit }) => {
   const [name, setName] = useState('');
@@ -150,6 +250,8 @@ const Chat: React.FC = () => {
   const [showLeftDrawer, setShowLeftDrawer] = useState(false);
   const [showRightDrawer, setShowRightDrawer] = useState(false);
   const [activeTab, setActiveTab] = useState<'chat' | 'files'>('chat');
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [showApiKeyModal, setShowApiKeyModal] = useState(false);
   const [contextMenu, setContextMenu] = useState<{
     context: Context;
     position: { x: number; y: number };
@@ -159,10 +261,41 @@ const Chat: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [showMessageFileUpload, setShowMessageFileUpload] = useState(false);
+  const [lastAiResponse, setLastAiResponse] = useState<string | null>(null);
+  const [deleteConfirmation, setDeleteConfirmation] = useState<{
+    isOpen: boolean;
+    fileId: string;
+    fileName: string;
+    filePath: string | null;
+  }>({
+    isOpen: false,
+    fileId: '',
+    fileName: '',
+    filePath: null
+  });
+  const [deleteContextConfirmation, setDeleteContextConfirmation] = useState<{
+    isOpen: boolean;
+    contextId: string;
+    contextName: string;
+  }>({
+    isOpen: false,
+    contextId: '',
+    contextName: ''
+  });
 
-  const handleDeleteFile = async (fileId: string, filePath: string | null) => {
+  const handleDeleteFile = async (fileId: string, fileName: string, filePath: string | null) => {
+    setDeleteConfirmation({
+      isOpen: true,
+      fileId,
+      fileName,
+      filePath
+    });
+  };
+
+  const confirmDeleteFile = async () => {
+    const { fileId, filePath } = deleteConfirmation;
+    
     try {
-      // First delete the file from storage if it exists
       // First delete the file from storage if it exists
       if (filePath) {
         const { error: storageError } = await supabase.storage
@@ -213,10 +346,76 @@ const Chat: React.FC = () => {
           files: updatedContext.files || []
         });
       }
+
+      // Close the confirmation modal
+      setDeleteConfirmation({
+        isOpen: false,
+        fileId: '',
+        fileName: '',
+        filePath: null
+      });
     } catch (error) {
       console.error('Error deleting file:', error);
       alert('Failed to delete file. Please try again.');
     }
+  };
+
+  const cancelDeleteFile = () => {
+    setDeleteConfirmation({
+      isOpen: false,
+      fileId: '',
+      fileName: '',
+      filePath: null
+    });
+  };
+
+  const handleDeleteContext = async (id: string) => {
+    const contextToDelete = contexts.find(context => context.id === id);
+    if (!contextToDelete) return;
+
+    setDeleteContextConfirmation({
+      isOpen: true,
+      contextId: id,
+      contextName: contextToDelete.name
+    });
+  };
+
+  const confirmDeleteContext = async () => {
+    const { contextId } = deleteContextConfirmation;
+    
+    try {
+      const { error } = await supabase
+        .from('contexts')
+        .delete()
+        .eq('id', contextId);
+
+      if (error) throw error;
+
+      setContexts(prev => prev.filter(context => context.id !== contextId));
+      
+      // If the deleted context was selected, clear the selection
+      if (selectedContext?.id === contextId) {
+        setSelectedContext(null);
+      }
+
+      // Close the confirmation modal
+      setDeleteContextConfirmation({
+        isOpen: false,
+        contextId: '',
+        contextName: ''
+      });
+    } catch (error) {
+      console.error('Error deleting context:', error);
+      alert('Failed to delete context. Please try again.');
+    }
+  };
+
+  const cancelDeleteContext = () => {
+    setDeleteContextConfirmation({
+      isOpen: false,
+      contextId: '',
+      contextName: ''
+    });
   };
 
   useEffect(() => {
@@ -272,21 +471,6 @@ const Chat: React.FC = () => {
 
   const handleRenameContext = async (id: string) => {
     setEditingContextId(id);
-  };
-
-  const handleDeleteContext = async (id: string) => {
-    try {
-      const { error } = await supabase
-        .from('contexts')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
-
-      setContexts(prev => prev.filter(context => context.id !== id));
-    } catch (error) {
-      console.error('Error deleting context:', error);
-    }
   };
 
   const handleContextClick = (e: React.MouseEvent, context: Context) => {
@@ -360,6 +544,7 @@ const Chat: React.FC = () => {
         content: 'This is a simulated response. The real implementation will connect to your knowledge base.'
       };
       setMessages(prev => [...prev, assistantMessage]);
+      setLastAiResponse(assistantMessage.content);
       setIsLoading(false);
     }, 1000);
   };
@@ -367,20 +552,18 @@ const Chat: React.FC = () => {
   const getFileIcon = (filename: string) => {
     const ext = filename.split('.').pop()?.toLowerCase();
     switch (ext) {
-      case 'pdf':
-        return <FileText className="text-red-500\" size={20} />;
-      case 'py':
-        return <FileText className="text-blue-500\" size={20} />;
-      case 'csv':
-        return <FileText className="text-green-500\" size={20} />;
-      case 'json':
-        return <FileText className="text-yellow-500\" size={20} />;
-      case 'md':
-        return <FileText className="text-purple-500\" size={20} />;
       case 'txt':
-        return <FileText className="text-gray-500\" size={20} />;
+        return <FileText className="text-gray-500" size={20} />;
+      case 'py':
+        return <FileText className="text-blue-500" size={20} />;
+      case 'csv':
+        return <FileText className="text-green-500" size={20} />;
+      case 'json':
+        return <FileText className="text-yellow-500" size={20} />;
+      case 'md':
+        return <FileText className="text-purple-500" size={20} />;
       default:
-        return <FileText className="text-[#6E6B65]\" size={20} />;
+        return <FileText className="text-[#6E6B65]" size={20} />;
     }
   };
 
@@ -388,39 +571,45 @@ const Chat: React.FC = () => {
     setSelectedContext(selectedContext?.id === context.id ? null : context);
   };
 
+  // Function to truncate context name
+  const truncateContextName = (name: string, maxLength: number = 20) => {
+    if (name.length <= maxLength) return name;
+    return name.substring(0, maxLength) + '...';
+  };
+
   return (
-    <div className="flex h-screen bg-white relative">
+    <div className="flex h-screen bg-white dark:bg-gray-900 relative">
       {/* Sidebar */}
-      <div className={`w-64 bg-white border-r border-[#E5E5E5] flex flex-col transform transition-transform duration-300 ${
+      <div className={`w-64 bg-white dark:bg-gray-800 border-r border-[#E5E5E5] dark:border-gray-600 flex flex-col transform transition-transform duration-300 ${
         showLeftDrawer ? 'translate-x-0' : '-translate-x-full'
       } fixed md:static z-20 h-full md:translate-x-0`}>
         {selectedContext ? (
           <>
-            <div className="flex items-center px-4 py-3 text-[#6E6B65] text-sm font-medium border-b border-[#E5E5E5]">
+            <div className="flex items-center px-4 py-3 text-[#6E6B65] dark:text-gray-400 text-sm font-medium border-b border-[#E5E5E5] dark:border-gray-600">
               <button 
                 onClick={() => setSelectedContext(null)}
-                className="flex items-center gap-2 hover:text-[#23201A] transition-colors"
+                className="flex items-center gap-2 hover:text-[#23201A] dark:hover:text-gray-200 transition-colors"
               >
                 <ChevronLeft size={16} />
                 <span>Back</span>
-                <span className="text-[#23201A]">• {selectedContext.name}</span>
+                <span className="text-[#23201A] dark:text-gray-200">• {selectedContext.name}</span>
               </button>
             </div>
             <div className="flex-1 overflow-y-auto p-4">
-              <h3 className="text-sm font-medium text-[#6E6B65] mb-3">Files</h3>
+              <h3 className="text-sm font-medium text-[#6E6B65] dark:text-gray-400 mb-3">Files</h3>
               {selectedContext.files?.map((file, index) => (
                 <div
                   key={file.id}
-                  className="flex items-center justify-between py-2 hover:bg-white rounded-md transition-colors group"
+                  className="flex items-center justify-between py-2 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-md transition-colors group"
                 >
                   <div className="flex items-center gap-3">
                     {getFileIcon(file.name)}
-                    <span className="text-[#23201A] text-sm">{file.name}</span>
+                    <span className="text-[#23201A] dark:text-gray-200 text-sm">{file.name}</span>
                   </div>
                   <button 
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleDeleteFile(file.id, file.path);
+                      handleDeleteFile(file.id, file.name, file.path);
                     }}
                     className="opacity-0 group-hover:opacity-100 text-red-500 hover:bg-red-50 p-1 rounded-full transition-all"
                   >
@@ -429,10 +618,10 @@ const Chat: React.FC = () => {
                 </div>
               ))}
             </div>
-            <div className="border-t border-[#E5E5E5] p-4">
+            <div className="border-t border-[#E5E5E5] dark:border-gray-600 p-4">
               <button 
                 onClick={() => setShowUploadModal(true)}
-                className="w-full flex items-center justify-center gap-2 py-2 text-[#A3C9C7] hover:bg-[#A3C9C7] hover:bg-opacity-20 rounded-md transition-colors"
+                className="w-full flex items-center justify-center gap-2 py-2 text-[#A3C9C7] hover:bg-[#A3C9C7] hover:bg-opacity-20 dark:hover:bg-gray-700 rounded-md transition-colors"
               >
                 <Plus size={16} />
                 <span>Add Data to Context</span>
@@ -441,7 +630,7 @@ const Chat: React.FC = () => {
           </>
         ) : (
           <>
-            <h2 className="px-4 py-3 text-sm font-medium text-[#6E6B65] border-b border-[#E5E5E5]">
+            <h2 className="px-4 py-3 text-sm font-medium text-[#6E6B65] dark:text-gray-400 border-b border-[#E5E5E5] dark:border-gray-600">
               MY CONTEXTS
             </h2>
             <div className="flex-1 overflow-y-auto">
@@ -456,10 +645,10 @@ const Chat: React.FC = () => {
                   }}
                 >
                   <div 
-                    className="flex items-center justify-between px-4 py-2 text-left hover:bg-[#A3C9C7] hover:bg-opacity-20 transition-colors"
+                    className="flex items-center justify-between px-4 py-2 text-left hover:bg-[#A3C9C7] hover:bg-opacity-20 dark:hover:bg-gray-700 transition-colors group"
                     onContextMenu={(e) => handleContextClick(e, context)}
                   >
-                    <div className="flex flex-col">
+                    <div className="flex flex-col min-w-0 flex-1 pr-2">
                       {editingContextId === context.id ? (
                         <input
                           autoFocus
@@ -493,21 +682,26 @@ const Chat: React.FC = () => {
                               e.currentTarget.blur();
                             }
                           }}
-                          className="bg-transparent border-none focus:outline-none text-[#23201A]"
+                          className="bg-transparent border-none focus:outline-none text-[#23201A] dark:text-gray-200 w-full"
                         />
                       ) : (
-                        <span className="text-[#23201A]">{context.name}</span>
+                        <span 
+                          className="text-[#23201A] dark:text-gray-200 truncate block"
+                          title={context.name}
+                        >
+                          {truncateContextName(context.name)}
+                        </span>
                       )}
-                      <span className="text-xs text-[#6E6B65]">{context.files?.length} files</span>
+                      <span className="text-xs text-[#6E6B65] dark:text-gray-400">{context.files?.length} files</span>
                     </div>
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         handleContextClick(e, context);
                       }}
-                      className="p-1 hover:bg-[#A3C9C7] hover:bg-opacity-20 rounded-full transition-colors"
+                      className="p-1 hover:bg-[#A3C9C7] hover:bg-opacity-20 dark:hover:bg-gray-600 rounded-full transition-colors flex-shrink-0 opacity-0 group-hover:opacity-100"
                     >
-                      <MoreVertical size={16} className="text-[#6E6B65]" />
+                      <MoreVertical size={16} className="text-[#6E6B65] dark:text-gray-400" />
                     </button>
                   </div>
                 </button>
@@ -516,11 +710,11 @@ const Chat: React.FC = () => {
           </>
         )}
 
-        <div className="border-t border-[#E5E5E5]">
+        <div className="border-t border-[#E5E5E5] dark:border-gray-600">
           {!selectedContext && (
             <button
               onClick={() => setShowCreateModal(true)}
-              className="w-full flex items-center gap-2 px-4 py-3 text-[#A3C9C7] hover:bg-[#A3C9C7] hover:bg-opacity-20 transition-colors"
+              className="w-full flex items-center gap-2 px-4 py-3 text-[#A3C9C7] hover:bg-[#A3C9C7] hover:bg-opacity-20 dark:hover:bg-gray-700 transition-colors"
             >
               <Plus size={16} />
               <span>New Context</span>
@@ -528,7 +722,7 @@ const Chat: React.FC = () => {
           )}
           <button
             onClick={handleLogout}
-            className="w-full flex items-center gap-2 px-4 py-3 text-[#6E6B65] hover:bg-[#A3C9C7] hover:bg-opacity-20 transition-colors border-t border-[#E5E5E5]"
+            className="w-full flex items-center gap-2 px-4 py-3 text-[#6E6B65] dark:text-gray-400 hover:bg-[#A3C9C7] hover:bg-opacity-20 dark:hover:bg-gray-700 transition-colors border-t border-[#E5E5E5] dark:border-gray-600"
           >
             <LogOut size={16} />
             <span>Logout</span>
@@ -538,59 +732,45 @@ const Chat: React.FC = () => {
 
       {/* Header with Logout */}
       <div className="flex-1 flex flex-col">
-        <div className="border-b border-[#E5E5E5] p-4 flex items-center justify-between">
+        <div className="border-b border-[#E5E5E5] dark:border-gray-600 p-4 flex items-center justify-between bg-white dark:bg-gray-800">
           <div className="flex items-center gap-2">
             <button
               onClick={() => setShowLeftDrawer(!showLeftDrawer)}
-              className="p-2 hover:bg-[#A3C9C7] hover:bg-opacity-20 rounded-md transition-colors md:hidden"
+              className="p-2 hover:bg-[#A3C9C7] hover:bg-opacity-20 dark:hover:bg-gray-700 rounded-md transition-colors md:hidden"
             >
               {showLeftDrawer ? <ChevronLeft size={20} /> : <ChevronRight size={20} />}
             </button>
-            <h1 className="text-[#23201A] text-xl font-medium">{selectedContext?.name || 'My Contexts'}</h1>
+            <h1 className="text-[#23201A] dark:text-gray-200 text-xl font-medium">{selectedContext?.name || 'My Contexts'}</h1>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => setActiveTab('chat')}
-              className={`p-2 rounded-md transition-colors ${
-                activeTab === 'chat' ? 'bg-[#A3C9C7] bg-opacity-20' : 'hover:bg-[#A3C9C7] hover:bg-opacity-20'
-              }`}
-            >
-              <MessageSquare size={20} />
-            </button>
-            <button
-              onClick={() => setActiveTab('files')}
-              className={`p-2 rounded-md transition-colors ${
-                activeTab === 'files' ? 'bg-[#A3C9C7] bg-opacity-20' : 'hover:bg-[#A3C9C7] hover:bg-opacity-20'
-              }`}
-            >
-              <Files size={20} />
-            </button>
+            <ThemeDropdown />
+            <CopyButton lastAiResponse={lastAiResponse} />
             <button
               onClick={() => setShowRightDrawer(!showRightDrawer)}
-              className="p-2 hover:bg-[#A3C9C7] hover:bg-opacity-20 rounded-md transition-colors"
+              className="p-2 hover:bg-[#A3C9C7] hover:bg-opacity-20 dark:hover:bg-gray-700 rounded-md transition-colors"
             >
-              <Settings size={20} />
+              <Settings size={20} className="text-[#6E6B65] dark:text-gray-400" />
             </button>
           </div>
         </div>
 
         {/* Messages Area */}
-        <div className={`flex-1 overflow-y-auto p-2 sm:p-4 space-y-6 bg-[#F6F5EE] ${!selectedContext ? 'opacity-50' : ''}`}>
+        <div className={`flex-1 overflow-y-auto p-2 sm:p-4 space-y-6 bg-[#F6F5EE] dark:bg-gray-900 ${!selectedContext ? 'opacity-50' : ''}`}>
           {!selectedContext ? (
             <div className="flex items-center justify-center h-full flex-col gap-3 px-4 text-center">
-              <h1 className="text-xl sm:text-2xl text-[#23201A]">Please select a Context</h1>
-              <p className="text-sm sm:text-base text-[#6E6B65]">Choose a context from the sidebar to start chatting.</p>
+              <h1 className="text-xl sm:text-2xl text-[#23201A] dark:text-gray-200">Please select a Context</h1>
+              <p className="text-sm sm:text-base text-[#6E6B65] dark:text-gray-400">Choose a context from the sidebar to start chatting.</p>
             </div>
           ) : messages.length === 0 ? (
             <div className="flex items-center justify-center h-full flex-col gap-3 px-4 text-center">
-              <h1 className="text-xl sm:text-2xl text-[#23201A]">What can I help with?</h1>
-              <p className="text-sm sm:text-base text-[#6E6B65]">Ask me anything about your saved content.</p>
+              <h1 className="text-xl sm:text-2xl text-[#23201A] dark:text-gray-200">What can I help with?</h1>
+              <p className="text-sm sm:text-base text-[#6E6B65] dark:text-gray-400">Ask me anything about your saved content.</p>
             </div>
           ) : (
             messages.map((message, index) => (
               <div
                 key={index}
-                className={`flex ${message.role === 'assistant' ? 'bg-white' : ''} p-2 sm:p-4 rounded-lg`}
+                className={`flex ${message.role === 'assistant' ? 'bg-white dark:bg-gray-800' : ''} p-2 sm:p-4 rounded-lg`}
               >
                 <div className="max-w-3xl mx-auto w-full text-sm sm:text-base">
                   <div className="flex gap-4">
@@ -599,7 +779,7 @@ const Chat: React.FC = () => {
                     } text-white`}>
                       {message.role === 'assistant' ? 'AI' : 'U'}
                     </div>
-                    <div className="flex-1 text-[#23201A] whitespace-pre-wrap">
+                    <div className="flex-1 text-[#23201A] dark:text-gray-200 whitespace-pre-wrap">
                       <div>{message.content}</div>
                       {message.attachment && (
                         <div className="mt-2 flex items-center gap-2 bg-[#A3C9C7] bg-opacity-10 p-2 rounded">
@@ -608,7 +788,7 @@ const Chat: React.FC = () => {
                             href={message.attachment.url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-sm text-[#23201A] hover:underline"
+                            className="text-sm text-[#23201A] dark:text-gray-200 hover:underline"
                           >
                             {message.attachment.name}
                           </a>
@@ -621,7 +801,7 @@ const Chat: React.FC = () => {
             ))
           )}
           {isLoading && (
-            <div className="flex bg-white p-4 rounded-lg">
+            <div className="flex bg-white dark:bg-gray-800 p-4 rounded-lg">
               <div className="max-w-3xl mx-auto w-full">
                 <div className="flex gap-4">
                   <div className="w-8 h-8 rounded-full bg-[#A3C9C7] flex items-center justify-center text-white">
@@ -637,17 +817,17 @@ const Chat: React.FC = () => {
         </div>
 
         {/* Input Area */}
-        <div className="border-t border-[#E5E5E5] p-2 sm:p-4 bg-white">
+        <div className="border-t border-[#E5E5E5] dark:border-gray-600 p-2 sm:p-4 bg-white dark:bg-gray-800">
           <form onSubmit={handleSubmit} className="max-w-3xl mx-auto">
             <div className="relative">
               {selectedFile && (
                 <div className="absolute left-4 top-0 -translate-y-full mb-2 flex items-center gap-2 bg-[#A3C9C7] bg-opacity-20 px-3 py-1 rounded-md">
                   <FileText size={16} className="text-[#6E6B65]" />
-                  <span className="text-sm text-[#23201A]">{selectedFile.name}</span>
+                  <span className="text-sm text-[#23201A] dark:text-gray-200">{selectedFile.name}</span>
                   <button
                     type="button"
                     onClick={removeSelectedFile}
-                    className="ml-2 text-[#6E6B65] hover:text-[#23201A]"
+                    className="ml-2 text-[#6E6B65] hover:text-[#23201A] dark:hover:text-gray-200"
                   >
                     <X size={14} />
                   </button>
@@ -659,12 +839,12 @@ const Chat: React.FC = () => {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 placeholder="Message your AI assistant..."
-                className="w-full p-3 sm:p-4 pr-24 rounded-lg bg-white border border-[#E5E5E5] text-[#23201A] text-sm sm:text-base placeholder-[#6E6B65] focus:outline-none focus:ring-2 focus:ring-[#A3C9C7] focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full p-3 sm:p-4 pr-24 rounded-lg bg-white dark:bg-gray-700 border border-[#E5E5E5] dark:border-gray-600 text-[#23201A] dark:text-gray-200 text-sm sm:text-base placeholder-[#6E6B65] dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#A3C9C7] focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
               />
               <button
                 type="button"
                 disabled={!selectedContext}
-                className="absolute right-12 top-1/2 -translate-y-1/2 p-2 text-[#6E6B65] hover:text-[#23201A]"
+                className="absolute right-12 top-1/2 -translate-y-1/2 p-2 text-[#6E6B65] dark:text-gray-400 hover:text-[#23201A] dark:hover:text-gray-200"
                 onClick={() => setShowMessageFileUpload(true)}
               >
                 <FileUp size={20} />
@@ -672,7 +852,7 @@ const Chat: React.FC = () => {
               <button
                 type="submit"
                 disabled={!selectedContext || (!input.trim() && !selectedFile) || isLoading}
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-[#6E6B65] hover:text-[#23201A] disabled:opacity-50 disabled:cursor-not-allowed"
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-[#6E6B65] dark:text-gray-400 hover:text-[#23201A] dark:hover:text-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Send size={20} />
               </button>
@@ -682,11 +862,11 @@ const Chat: React.FC = () => {
       </div>
 
       {/* Right Drawer */}
-      <div className={`w-full sm:w-80 bg-white border-l border-[#E5E5E5] flex flex-col transform transition-transform duration-300 ${
+      <div className={`w-full sm:w-80 bg-white dark:bg-gray-800 border-l border-[#E5E5E5] dark:border-gray-600 flex flex-col transform transition-transform duration-300 ${
         showRightDrawer ? 'translate-x-0' : 'translate-x-full'
       } fixed right-0 top-0 bottom-0 z-30`}>
-        <div className="flex items-center justify-between p-4 border-b border-[#E5E5E5]">
-          <h2 className="text-[#23201A] font-medium">Settings</h2>
+        <div className="flex items-center justify-between p-4 border-b border-[#E5E5E5] dark:border-gray-600">
+          <h2 className="text-[#23201A] dark:text-gray-200 font-medium">Settings</h2>
           <button
             onClick={() => setShowRightDrawer(false)}
             className="p-2 hover:bg-[#A3C9C7] hover:bg-opacity-20 rounded-md transition-colors"
@@ -694,19 +874,75 @@ const Chat: React.FC = () => {
             <X size={20} />
           </button>
         </div>
-        <div className="p-4">
-          <div className="space-y-4">
-            <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium text-[#6E6B65]">Model</label>
-              <select className="w-full p-2 rounded-md border border-[#E5E5E5]">
-                <option>GPT-4</option>
-                <option>GPT-3.5</option>
-              </select>
+        <div className="flex-1 p-4">
+          <div className="space-y-3">
+            {/* My Profile Button */}
+            <button
+              onClick={() => setShowProfileModal(true)}
+              className="w-full flex items-center gap-3 p-4 bg-white dark:bg-gray-700 hover:bg-[#F6F5EE] dark:hover:bg-gray-600 rounded-lg border border-[#E5E5E5] dark:border-gray-600 transition-colors text-left"
+            >
+              <div className="w-10 h-10 bg-[#A3C9C7] rounded-full flex items-center justify-center">
+                <Settings size={20} className="text-white" />
+              </div>
+              <div>
+                <h3 className="text-[#23201A] dark:text-gray-200 font-medium">My Profile</h3>
+                <p className="text-[#6E6B65] dark:text-gray-400 text-sm">Manage account settings</p>
+              </div>
+            </button>
+
+            {/* API Key Management */}
+            <div className="bg-white dark:bg-gray-700 rounded-lg border border-[#E5E5E5] dark:border-gray-600 p-4">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-10 h-10 bg-yellow-100 dark:bg-yellow-900 rounded-full flex items-center justify-center">
+                  <Key size={20} className="text-yellow-600 dark:text-yellow-400" />
+                </div>
+                <div>
+                  <h3 className="text-[#23201A] dark:text-gray-200 font-medium">API Keys</h3>
+                  <p className="text-[#6E6B65] dark:text-gray-400 text-sm">Manage your OpenAI API keys</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setShowApiKeyModal(true)}
+                className="w-full text-left text-[#A3C9C7] hover:text-opacity-80 text-sm"
+              >
+                Manage API Keys
+              </button>
             </div>
-            <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium text-[#6E6B65]">Temperature</label>
-              <input type="range" min="0" max="100" className="w-full" />
+
+            {/* Temperature Settings */}
+            <div className="bg-white dark:bg-gray-700 rounded-lg border border-[#E5E5E5] dark:border-gray-600 p-4">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-10 h-10 bg-[#A3C9C7] bg-opacity-20 rounded-full flex items-center justify-center">
+                  <Settings size={20} className="text-[#A3C9C7]" />
+                </div>
+                <div>
+                  <h3 className="text-[#23201A] dark:text-gray-200 font-medium">Temperature</h3>
+                  <p className="text-[#6E6B65] dark:text-gray-400 text-sm">Control response creativity</p>
+                </div>
+              </div>
+              <input 
+                type="range" 
+                min="0" 
+                max="100" 
+                className="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
+              />
             </div>
+          </div>
+
+          {/* Logout Button */}
+          <div className="mt-6">
+            <button
+              onClick={handleLogout}
+              className="w-full flex items-center gap-3 p-4 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-lg border border-red-200 dark:border-red-800 transition-colors text-left"
+            >
+              <div className="w-10 h-10 bg-red-100 dark:bg-red-900 rounded-full flex items-center justify-center">
+                <LogOut size={20} className="text-red-600 dark:text-red-400" />
+              </div>
+              <div>
+                <h3 className="text-red-600 dark:text-red-400 font-medium">Log Out</h3>
+                <p className="text-red-500 dark:text-red-500 text-sm">Sign out of your account</p>
+              </div>
+            </button>
           </div>
         </div>
       </div>
@@ -755,6 +991,34 @@ const Chat: React.FC = () => {
           setSelectedFile(file);
           setShowMessageFileUpload(false);
         }}
+      />
+
+      {/* Delete Confirmation Modal */}
+      <DeleteConfirmationModal
+        isOpen={deleteConfirmation.isOpen}
+        fileName={deleteConfirmation.fileName}
+        onConfirm={confirmDeleteFile}
+        onCancel={cancelDeleteFile}
+      />
+
+      {/* Delete Context Confirmation Modal */}
+      <DeleteContextModal
+        isOpen={deleteContextConfirmation.isOpen}
+        contextName={deleteContextConfirmation.contextName}
+        onConfirm={confirmDeleteContext}
+        onCancel={cancelDeleteContext}
+      />
+
+      {/* Profile Modal */}
+      <ProfileModal
+        isOpen={showProfileModal}
+        onClose={() => setShowProfileModal(false)}
+      />
+
+      {/* API Key Modal */}
+      <ApiKeyModal
+        isOpen={showApiKeyModal}
+        onClose={() => setShowApiKeyModal(false)}
       />
     </div>
   );
